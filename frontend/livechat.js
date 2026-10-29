@@ -210,10 +210,10 @@
     let tab = sessionStorage.getItem('lcs') || 'active', q = '', onlyUnread = false, cur = +sessionStorage.getItem('cur') || null, mounted = null;
     const recent = () => JSON.parse(sessionStorage.getItem('lcrecent') || '[]');
     const collapsed = g => sessionStorage.getItem('lcg_' + g) === '1';
-    $('#main').innerHTML = `<div class="lc-strip" id="lcstrip"></div>
+    $('#main').innerHTML = `<div class="lc-stages" id="lcstages"></div><div class="lc-strip" id="lcstrip"></div>
       <div class="card lc ${sessionStorage.getItem('detail') === '1' ? 'detail' : ''}" id="lc">
       <div class="lc-list"><div class="lc-tools"><div class="row" style="flex-wrap:nowrap;gap:8px"><input id="lcq" placeholder="Search name or mobile number" autocomplete="off" style="flex:1;min-width:0"><button class="b ghost sm" id="lcun" title="Show only chats with unread messages">Unread</button></div></div>
-        <div class="lc-stages" id="lcstages"></div><div class="lc-items" id="lcitems"></div></div>
+        <div class="lc-items" id="lcitems"></div></div>
       <div class="lc-view" id="lcview"></div></div>
       ${cfg.mode === 'mock' ? `<div class="card"><h2>Simulate an incoming message <span class="muted" style="font-weight:400">(mock mode only)</span></h2>
         <form id="sim" class="row"><input name="phone" placeholder="Phone" required><input name="name" placeholder="Name"><input name="text" placeholder="e.g. hi, Talk to a counsellor, STOP" required style="flex:1"><button class="b ghost">Simulate</button></form></div>` : ''}`;
@@ -246,7 +246,16 @@
       const r = recent();
       $('#lcstrip').innerHTML = r.map(c => `<div class="sc ${c.id === cur ? 'on' : ''}" data-id="${c.id}" title="${esc(c.name)}">${avatar(c.name)}<span>${esc(trunc(c.name, 12))}</span><button class="x" data-close="${c.id}" aria-label="Close">×</button></div>`).join('');
       $('#lcstrip').style.display = r.length ? '' : 'none';
+      fit();
     };
+    // Fill the rest of the page: the panel runs from where it starts down to the bottom of the window.
+    const fit = () => {
+      const lc = $('#lc'); if (!lc) return;
+      const top = lc.getBoundingClientRect().top + window.scrollY, h = Math.max(420, window.innerHeight - top - 16);
+      if (window.matchMedia('(max-width:900px)').matches) { lc.style.height = ''; $('#lcview').style.height = h + 'px'; }
+      else { lc.style.height = h + 'px'; $('#lcview').style.height = ''; }
+    };
+    window.addEventListener('resize', fit);
     const remember = (id, name) => { const r = recent().filter(c => c.id !== id); r.unshift({id, name}); sessionStorage.setItem('lcrecent', JSON.stringify(r.slice(0, 8))); };
 
     const onChange = stage => { if (stage && stage !== tab) { tab = stage; sessionStorage.setItem('lcs', tab); } refreshList(); };
