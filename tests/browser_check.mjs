@@ -125,6 +125,7 @@ check((await text('.drawer')).includes('being handled by Arun'), 'agent: a chat 
 await shot('07-agent-locked');
 await click('.drawer [data-close]');
 check(await count('#nav [data-t=Users]') === 0 && await count('#nav [data-t=Sessions]') === 0, 'agent menu hides Users and Sessions');
+check(await ev(`![...document.querySelectorAll('#nav button')].some(b=>/AI Agent/.test(b.textContent)) && !/\\d{8,}/.test(document.getElementById('status').textContent)`), 'sidebar: no AI Agent item and no phone number in the status box');
 noNewErrors(m0, 'Agent access');
 
 // ================= DESKTOP: manager =================
@@ -172,6 +173,23 @@ const tops = await ev(`[...document.querySelectorAll('.drawer .grid.six .stat')]
 check(tops.length === 6 && new Set(tops).size === 1, 'Campaign detail: six stat tiles in one row');
 await shot('13-campaign-detail');
 await click('.drawer [data-close]'); await sleep(300);
+// contacts from a file: country codes are checked and the errors are shown
+await click('#newc'); await sleep(800);
+check(await ev(`(()=>{const d=document.getElementById('ncdrop').getBoundingClientRect(),b=document.getElementById('ncbrowse').getBoundingClientRect();return d.height>=150&&d.width>300&&b.width>60&&b.height>20&&getComputedStyle(document.getElementById('ncbrowse')).visibility==='visible'})()`), 'campaign upload: large drop zone with a visible Browse button');
+await ev(`document.querySelector('.upl').scrollIntoView({block:'center'})`); await sleep(300); await shot('13a-upload-empty');
+await ev(`(()=>{const dt=new DataTransfer();dt.items.add(new File(['Name,Phone\\nAsha,+91 98765 43210\\nRavi,9876543211\\nMeena,919876543212\\nX,abc\\n'],'leads.csv',{type:'text/csv'}));document.getElementById('ncdrop').dispatchEvent(new DragEvent('drop',{dataTransfer:dt,bubbles:true,cancelable:true}));})()`);   // drag and drop
+await sleep(1500);
+check(await ev(`document.querySelectorAll('.upl-sum .pill.ok').length===1 && /2 valid/.test(document.querySelector('.upl-sum .pill.ok').textContent)`), 'campaign upload: 2 valid numbers found');
+check(await ev(`(()=>{const e=document.querySelector('.upl-err');return !!e && /country code/.test(e.textContent) && /abc/.test(e.textContent)})()`), 'campaign upload: errors listed (missing country code, letters)');
+check(await ev(`document.getElementById('ncfilters').classList.contains('off') && /2 contacts from the file/.test(document.getElementById('ncaud').textContent)`), 'campaign upload: file replaces the other audience filters');
+await ev(`document.querySelector('.upl').scrollIntoView({block:'center'})`); await sleep(300);
+await shot('13b-campaign-upload');
+await ev(`document.getElementById('ncrm').click()`); await sleep(400);
+check(await ev(`!document.getElementById('ncfilters').classList.contains('off') && !document.querySelector('.upl-err')`), 'campaign upload: removing the file restores the audience filters');
+await ev(`(()=>{const dt=new DataTransfer();dt.items.add(new File(['x'],'pic.png'));const i=document.getElementById('ncfile');i.files=dt.files;i.dispatchEvent(new Event('change'));})()`); await sleep(1000);
+check(await ev(`/Upload a CSV/.test(document.querySelector('.upl-err')?.textContent||'')`), 'campaign upload: unsupported file type shows an error');
+await ev(`document.querySelector('[data-x]')?.click()`); await sleep(300);
+m0 = mark();   // the console logs the 422 we provoked on purpose above
 noNewErrors(m0, 'Campaigns');
 
 // ================= WIDE =================

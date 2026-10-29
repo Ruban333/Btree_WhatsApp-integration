@@ -123,6 +123,16 @@ code{background:var(--soft);border:1px solid var(--line);padding:1px 6px;border-
 .pill.DRAFT,.pill.PENDING,.pill.scheduled,.pill.sent,.pill.running,.pill.contacted,.pill.qr_ready,.pill.initializing,.pill.authenticating{background:var(--warn-bg);color:var(--warn)}
 .pill.failed,.pill.REJECTED,.pill.cancelled,.pill.lost,.pill.no{background:var(--bad-bg);color:var(--bad)}
 .pill.warn{background:var(--warn-bg);color:var(--warn)}
+.pill.ok{background:var(--ok-bg);color:var(--ok)}.pill.bad{background:var(--bad-bg);color:var(--bad)}
+.upl{margin:8px 0 14px}
+.drop{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;min-height:190px;padding:24px 16px;text-align:center;border:2px dashed var(--brand);border-radius:14px;background:var(--brand-soft);color:var(--brand-ink);cursor:pointer;transition:background .15s,transform .15s}
+.drop:hover,.drop:focus-visible,.drop.over{background:var(--soft);outline:0}.drop.over{transform:scale(1.01);border-style:solid}
+.drop b{font-size:15px;color:var(--ink)}.drop span{font-size:12.5px;color:var(--mute)}.drop small{font-size:12.5px;color:var(--mute);max-width:420px}
+.drop .b{pointer-events:auto}
+.upl-sum{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-top:10px}.upl-sum .b{margin-left:auto}
+.upl-err{margin-top:10px;border:1px solid var(--bad);background:var(--bad-bg);color:var(--bad);border-radius:10px;padding:10px 12px;font-size:13px;max-height:200px;overflow:auto}
+.upl-err table{width:100%;border-collapse:collapse;margin-top:6px;color:var(--ink)}.upl-err td{padding:3px 8px 3px 0;vertical-align:top}.upl-err code{font-size:12px}
+#ncfilters.off{opacity:.4;pointer-events:none}
 .pill.new,.pill.interested,.pill.human,.pill.def{background:var(--info-bg);color:var(--info)}
 .av{width:38px;height:38px;border-radius:50%;display:grid;place-items:center;font-weight:700;font-size:14px;color:#fff;flex:none}
 .av.s{width:32px;height:32px;font-size:12px}
@@ -443,7 +453,9 @@ const ago = iso => { if (!iso) return '—'; const s = (Date.now() - new Date(is
 
 let tab = decodeURIComponent(location.hash.slice(1)) || localStorage.getItem('tab') || 'Dashboard', timer = null, courses = [], cfg = {mode: 'mock'}, ME = null;
 const can = p => !!ME && ME.perms.includes(p);
-const allowed = () => TABS.filter(t => can(t.perm));
+// Pages switched off in the menu. Set a page's id to true to bring it back (the AI Agent still works on the server).
+const SHOW_PAGE = {Agent: false};
+const allowed = () => TABS.filter(t => can(t.perm) && SHOW_PAGE[t.id] !== false);
 const navBadges = {};
 window.setNavBadge = (id, n) => { navBadges[id] = n; const b = document.querySelector(`#nav [data-t="${id}"]`); if (!b) return;
   let el = b.querySelector('.nbadge'); if (!n) { if (el) el.remove(); return; } if (!el) { el = document.createElement('span'); el.className = 'nbadge'; b.appendChild(el); } el.textContent = n > 99 ? '99+' : n; };
@@ -472,7 +484,7 @@ async function refreshStatus() {
       const s = await api('/whatsapp/status');
       const st = s.openwa_status || 'unknown';
       t = st === 'ready' ? 'WhatsApp connected' : 'WhatsApp ' + st.replace('_', ' ');
-      d = s.openwa_detail || (st === 'not_created' ? 'Open Sessions to link a phone' : '');
+      d = st === 'ready' ? '' : (s.openwa_detail || (st === 'not_created' ? 'Open Sessions to link a phone' : ''));   // the linked number is not shown in the sidebar
       led = st === 'ready' ? 'ok' : (['qr_ready', 'initializing', 'authenticating'].includes(st) ? 'warn' : 'bad');
       ct = st === 'ready' ? 'Connected' : st.replace('_', ' '); cl = led === 'ok' ? 'ok' : led;
     } else if (cfg.mode === 'cloud') { t = 'WhatsApp Cloud API'; d = 'Live'; ct = 'Cloud API'; cl = 'ok'; }

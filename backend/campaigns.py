@@ -9,6 +9,7 @@ from pydantic import BaseModel
 
 import contacts
 import db
+import phones
 
 router = APIRouter()
 REPLY_WINDOW_DAYS = 3   # a reply within this long after the campaign message counts as a response to it
@@ -16,6 +17,11 @@ REPLY_WINDOW_DAYS = 3   # a reply within this long after the campaign message co
 
 def ts() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+
+
+class UploadRow(BaseModel):
+    name: str = ""
+    phone: str
 
 
 class CampaignIn(BaseModel):
@@ -27,6 +33,13 @@ class CampaignIn(BaseModel):
     course: str = ""
     status: str = ""
     scheduled_at: str | None = None   # "YYYY-MM-DD HH:MM:SS" UTC; None = send now
+    upload: list[UploadRow] = []      # contacts read from an uploaded file: they become the audience
+    opted_in: bool = False            # the sender confirms the uploaded people agreed to WhatsApp messages
+
+
+class ParseIn(BaseModel):
+    filename: str = ""
+    data: str   # the file, base64
 
 
 def _aud(c: CampaignIn) -> dict:
@@ -63,6 +76,40 @@ def audience_preview(c: CampaignIn):
             "not_opted_in": sum(1 for l in everyone if not l["consent"] or l.get("opted_out"))}
 
 
+@router.post("/api/broadcasts/parse-contacts")
+def parse_contacts(body: ParseIn):
+    """Reads an uploaded CSV / TXT / DOCX / PDF and reports which numbers are valid; nothing is saved."""
+    try:
+        return phones.read_contacts(body.filename, body.data)
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+
+
+def _save_upload(c: CampaignIn) -> int:
+    """Saves the uploaded contacts (new ones are created, known ones reused) into a fresh list and returns its id."""
+    if not c.opted_in:
+        raise HTTPException(422, "Confirm that these contacts agreed to receive WhatsApp messages")
+    good, bad = {}, 0
+    for r in c.upload[:phones.MAX_ROWS]:
+        phone, err = phones.check_phone(r.phone)
+        if err:
+            bad += 1
+        else:
+            good.setdefault(phone, r.name.strip())
+    if not good:
+        raise HTTPException(422, f"None of the {bad} uploaded numbers is valid (every number needs a country code)")
+    lid = db.run("INSERT INTO lists(name) VALUES(?)", (f"Upload: {c.name.strip()[:40]} · {ts()}",))
+    for phone, name in good.items():
+        row = db.one("SELECT id FROM leads WHERE phone=?", (phone,))
+        if row:
+            lead = row["id"]
+            db.run("UPDATE leads SET consent=1 WHERE id=? AND opted_out=0", (lead,))
+        else:
+            lead = db.run("INSERT INTO leads(name,phone,source,status,consent) VALUES(?,?,?,?,1)", (name or phone, phone, "campaign upload", "new"))
+        db.run("INSERT OR IGNORE INTO list_members(list_id,lead_id) VALUES(?,?)", (lid, lead))
+    return lid
+
+
 @router.post("/api/broadcasts")
 def create_campaign(c: CampaignIn, request: Request):
     tpl = db.one("SELECT * FROM templates WHERE id=?", (c.template_id,))
@@ -72,12 +119,16 @@ def create_campaign(c: CampaignIn, request: Request):
         raise HTTPException(422, f"Template is {tpl['status']}; only APPROVED templates can be sent")
     if not c.name.strip():
         raise HTTPException(422, "Give the campaign a name")
-    if not contacts.campaign_audience(_aud(c)):
+    if c.upload:
+        aud = {"lists": [_save_upload(c)], "tags": [], "segment": None, "course": "", "status": ""}
+    else:
+        aud = _aud(c)
+    if not contacts.campaign_audience(aud):
         raise HTTPException(422, "This audience has no opted-in contacts")
     when = c.scheduled_at or ts()
     bid = db.run("INSERT INTO broadcasts(name,template_id,audience,scheduled_at,created_by) VALUES(?,?,?,?,?)",
-                 (c.name.strip(), c.template_id, json.dumps(_aud(c)), when, request.state.user["name"]))
-    return {"id": bid}
+                 (c.name.strip(), c.template_id, json.dumps(aud), when, request.state.user["name"]))
+    return {"id": bid, "audience": len(contacts.campaign_audience(aud))}
 
 
 def _get(bid: int) -> dict:
